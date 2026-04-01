@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { WebSocket } from 'ws'
+import WebSocket from 'ws'
 
 const TTS_WSS = 'wss://cbm01.cn-huabei-1.xf-yun.com/v1/private/mcd9m97e6'
 
@@ -17,16 +17,20 @@ function buildAuthUrl() {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.status(405).end()
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  if (req.method === 'OPTIONS') { res.status(200).end(); return }
+
+  if (req.method !== 'POST') { res.status(405).end(); return }
+
+  if (!process.env.XFYUN_APPID || !process.env.XFYUN_API_SECRET || !process.env.XFYUN_API_KEY) {
+    res.status(500).json({ error: 'Missing env vars: XFYUN_APPID / XFYUN_API_SECRET / XFYUN_API_KEY' })
     return
   }
 
   const { text } = req.body || {}
-  if (!text?.trim()) {
-    res.status(400).json({ error: 'text is required' })
-    return
-  }
+  if (!text?.trim()) { res.status(400).json({ error: 'text is required' }); return }
 
   const authUrl = buildAuthUrl()
   const textB64 = Buffer.from(text, 'utf-8').toString('base64')
@@ -50,10 +54,10 @@ export default async function handler(req, res) {
     const audioChunks = []
 
     const timer = setTimeout(() => {
-      ws.terminate()
+      try { ws.terminate() } catch (_) {}
       if (!res.headersSent) res.status(504).json({ error: 'TTS timeout' })
       resolve()
-    }, 28000)
+    }, 25000)
 
     const ws = new WebSocket(authUrl)
 
@@ -66,7 +70,7 @@ export default async function handler(req, res) {
         if (code !== 0) {
           clearTimeout(timer)
           ws.close()
-          if (!res.headersSent) res.status(502).json({ error: `讯飞错误 ${code}: ${msg.header?.message}` })
+          if (!res.headersSent) res.status(502).json({ error: `XFYun error ${code}: ${msg.header?.message}` })
           resolve()
           return
         }
